@@ -127,7 +127,7 @@ mod page;
 mod ptr;
 mod transaction;
 
-pub use bucket::Bucket;
+pub use bucket::{Bucket, BucketRef};
 pub use cursor::Cursor;
 pub use data::*;
 pub use db::{OpenOptions, DB};
