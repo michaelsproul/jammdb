@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use jammdb::{Bucket, Data, Error, DB};
 use rand::prelude::*;
 
@@ -25,6 +26,25 @@ fn large_insert() -> Result<(), Error> {
     test_insert((0..=50000).collect())?;
     test_insert((0..=50000).collect())?;
     Ok(())
+}
+
+#[test]
+fn test_repeated_insert() {
+    let random_file = common::RandomFile::new();
+    let db = DB::open(&random_file.path).unwrap();
+
+    loop {
+        let tx = db.tx(true).unwrap();
+        let bucket = tx.get_or_create_bucket("mulanbucket").unwrap();
+        let next_int = bucket.next_int();
+        if next_int % 50 == 0 {
+            println!("{next_int:?}");
+        }
+        bucket
+            .put(next_int.to_be_bytes(), Bytes::from("mulanstuff").as_ref())
+            .unwrap();
+        tx.commit().unwrap();
+    }
 }
 
 fn test_insert(mut values: Vec<u64>) -> Result<(), Error> {

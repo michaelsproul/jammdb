@@ -23,6 +23,7 @@ memmap = "0.7.0"
 page_size = "0.4.2"
 fs2 = "0.4.3"
 sha3 = "0.9"
+bytes = "0.4.12"
 
 [dev-dependencies]
 rand = "0.8"
