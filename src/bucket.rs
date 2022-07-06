@@ -13,7 +13,9 @@ use crate::page::{Page, PageID};
 use crate::ptr::Ptr;
 use crate::transaction::TransactionInner;
 
+/// A debug variable for counting how many times a parent page is added.
 static mut ADD_PAGE_PARENT_COUNT: u64 = 0;
+
 /// A collection of data
 ///
 /// Buckets contain a collection of data, sorted by key.
@@ -718,18 +720,24 @@ impl BucketInner {
 
     pub(crate) fn add_page_parent(&mut self, page: PageID, parent: PageID) {
         println!(
-            "meta root page: {}, parent: {}",
+            "Bucket, f: add_page_parent: meta.root_page: {}, parent: {}",
             self.meta.root_page, parent
         );
-        println!("page parents: {:?}", self.page_parents);
+        debug_assert!(self.meta.root_page == parent || self.page_parents.contains_key(&parent));
+        self.page_parents.insert(page, parent);
+        println!(
+            "Bucket, f: add_page_parent: page_parents: {:?}",
+            self.page_parents
+        );
         unsafe {
             ADD_PAGE_PARENT_COUNT += 1;
         };
         unsafe {
-            println!("Add page parent count {}", ADD_PAGE_PARENT_COUNT);
+            println!(
+                "Bucket, f: add_page_parent: add_page_parent call count {}",
+                ADD_PAGE_PARENT_COUNT
+            );
         };
-        debug_assert!(self.meta.root_page == parent || self.page_parents.contains_key(&parent));
-        self.page_parents.insert(page, parent);
     }
 
     pub(crate) fn node(&mut self, id: PageNodeID) -> &mut Node {
@@ -739,10 +747,10 @@ impl BucketInner {
                     return &mut self.nodes[*node_id as usize];
                 }
                 println!(
-                    "meta root page: {}, page id: {}",
+                    "Bucket, f: node: meta.root_page: {}, page id: {}",
                     self.meta.root_page, page_id
                 );
-                println!("page parents: {:?}", self.page_parents);
+                println!("Bucket, f: node: page_parents: {:?}", self.page_parents);
                 debug_assert!(
                     self.meta.root_page == page_id
                         || self.page_parents.contains_key(&page_id)
@@ -752,20 +760,19 @@ impl BucketInner {
                 self.page_node_ids.insert(page_id, node_id);
                 let n: Node = Node::from_page(node_id, Ptr::new(self), self.tx.page(page_id));
                 self.nodes.push(Pin::new(Box::new(n)));
-                println!(
-                    "meta root page: {}, page id: {}",
-                    self.meta.root_page, page_id
-                );
                 if self.meta.root_page != page_id && !self.page_siblings.contains_key(&page_id) {
-                    println!("creating new node");
+                    println!("Bucket, f: node: creating new node");
                     let node_key = self.nodes[node_id as usize].data.key_parts();
                     println!(
-                        "self.page_parents[&page_id]: {}",
+                        "Bucket, f: node: self.page_parents[&page_id]: {}",
                         self.page_parents[&page_id]
                     );
                     let parent = self.node(PageNodeID::Page(self.page_parents[&page_id]));
                     parent.insert_child(node_id, node_key);
-                    println!("node_id {}, node_key {:?}", node_id, node_key);
+                    println!(
+                        "Bucket, f: node: node_id: {}, node_key: {:?}",
+                        node_id, node_key
+                    );
                 }
                 node_id
             }

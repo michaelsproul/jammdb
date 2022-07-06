@@ -179,7 +179,7 @@ impl<'a> Cursor<'a> {
         self.next_called = false;
         self.stack.clear();
         println!(
-            "key: {:?}, meta root page: {}",
+            "Cursor, f: seek: key: {:?}, meta root page: {}",
             key.as_ref(),
             self.bucket.meta.root_page
         );
