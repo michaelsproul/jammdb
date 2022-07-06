@@ -17,6 +17,7 @@ const BRANCH_SIZE: u64 = size_of::<BranchElement>() as u64;
 const MIN_KEYS_PER_NODE: usize = 2;
 const FILL_PERCENT: f32 = 0.5;
 
+static mut MERGE_COUNT: u64 = 0;
 pub(crate) struct Node {
     pub(crate) id: NodeID,
     pub(crate) page_id: PageID,
@@ -242,6 +243,8 @@ impl Node {
     }
 
     pub(crate) fn merge(&mut self) -> bool {
+        unsafe { MERGE_COUNT+=1; };
+        unsafe { println!("Merge count {}", MERGE_COUNT); };
         // merge children if it is a branch node
         if let NodeData::Branches(branches) = &mut self.data {
             let mut deleted_children = vec![];
