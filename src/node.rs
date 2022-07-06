@@ -18,6 +18,7 @@ const MIN_KEYS_PER_NODE: usize = 2;
 const FILL_PERCENT: f32 = 0.5;
 
 static mut MERGE_COUNT: u64 = 0;
+static mut CHILD_MERGE_COUNT: u64 = 0;
 pub(crate) struct Node {
     pub(crate) id: NodeID,
     pub(crate) page_id: PageID,
@@ -259,6 +260,8 @@ impl Node {
                 let child = self.bucket.node(id);
                 // check if child needs to be merged.
                 if child.merge() {
+                    unsafe { CHILD_MERGE_COUNT+=1; };
+                    unsafe { println!("Child merge count {}", CHILD_MERGE_COUNT); };
                     // find the child's branch element in this node's data
                     let index = match branches
                         .binary_search_by_key(&child.original_key.unwrap().slice(), |b| b.key())
