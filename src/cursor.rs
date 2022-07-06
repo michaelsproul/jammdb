@@ -178,7 +178,11 @@ impl<'a> Cursor<'a> {
     pub fn seek<T: AsRef<[u8]>>(&mut self, key: T) -> bool {
         self.next_called = false;
         self.stack.clear();
-        println!("key: {:?}, meta root page: {}", key.as_ref(), self.bucket.meta.root_page);
+        println!(
+            "key: {:?}, meta root page: {}",
+            key.as_ref(),
+            self.bucket.meta.root_page
+        );
         self.search(key.as_ref(), self.bucket.meta.root_page)
     }
 

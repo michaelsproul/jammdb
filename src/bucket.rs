@@ -13,6 +13,7 @@ use crate::page::{Page, PageID};
 use crate::ptr::Ptr;
 use crate::transaction::TransactionInner;
 
+static mut ADD_PAGE_PARENT_COUNT: u64 = 0;
 /// A collection of data
 ///
 /// Buckets contain a collection of data, sorted by key.
@@ -76,6 +77,7 @@ impl Bucket {
             nodes: Vec::new(),
             page_node_ids: HashMap::new(),
             page_parents: HashMap::new(),
+            page_siblings: HashMap::new(),
         })
     }
 
@@ -465,6 +467,8 @@ pub(crate) struct BucketInner {
     nodes: Vec<Pin<Box<Node>>>,
     page_node_ids: HashMap<PageID, NodeID>,
     page_parents: HashMap<PageID, PageID>,
+    // A sibling paged mapped to a child page upon merge.
+    pub page_siblings: HashMap<PageID, PageID>,
 }
 
 impl BucketInner {
@@ -479,6 +483,7 @@ impl BucketInner {
             nodes: Vec::new(),
             page_node_ids: HashMap::new(),
             page_parents: HashMap::new(),
+            page_siblings: HashMap::new(),
         });
         self.buckets.insert(Vec::from(name), Pin::new(Box::new(b)));
         let b = self.buckets.get_mut(name).unwrap();
@@ -505,6 +510,7 @@ impl BucketInner {
             nodes: Vec::new(),
             page_node_ids: HashMap::new(),
             page_parents: HashMap::new(),
+            page_siblings: HashMap::new(),
         }
     }
 
@@ -711,8 +717,17 @@ impl BucketInner {
     }
 
     pub(crate) fn add_page_parent(&mut self, page: PageID, parent: PageID) {
-        println!("meta root page: {}, parent: {}", self.meta.root_page, parent);
+        println!(
+            "meta root page: {}, parent: {}",
+            self.meta.root_page, parent
+        );
         println!("page parents: {:?}", self.page_parents);
+        unsafe {
+            ADD_PAGE_PARENT_COUNT += 1;
+        };
+        unsafe {
+            println!("Add page parent count {}", ADD_PAGE_PARENT_COUNT);
+        };
         debug_assert!(self.meta.root_page == parent || self.page_parents.contains_key(&parent));
         self.page_parents.insert(page, parent);
     }
@@ -723,21 +738,34 @@ impl BucketInner {
                 if let Some(node_id) = self.page_node_ids.get(&page_id) {
                     return &mut self.nodes[*node_id as usize];
                 }
-                println!("meta root page: {}, page id: {}", self.meta.root_page, page_id);
+                println!(
+                    "meta root page: {}, page id: {}",
+                    self.meta.root_page, page_id
+                );
                 println!("page parents: {:?}", self.page_parents);
                 debug_assert!(
-                    self.meta.root_page == page_id || self.page_parents.contains_key(&page_id)
+                    self.meta.root_page == page_id
+                        || self.page_parents.contains_key(&page_id)
+                        || self.page_siblings.contains_key(&page_id)
                 );
                 let node_id = self.nodes.len() as u64;
                 self.page_node_ids.insert(page_id, node_id);
                 let n: Node = Node::from_page(node_id, Ptr::new(self), self.tx.page(page_id));
                 self.nodes.push(Pin::new(Box::new(n)));
-                println!("meta root page: {}, page id: {}", self.meta.root_page, page_id);
-                if self.meta.root_page != page_id {
+                println!(
+                    "meta root page: {}, page id: {}",
+                    self.meta.root_page, page_id
+                );
+                if self.meta.root_page != page_id && !self.page_siblings.contains_key(&page_id) {
                     println!("creating new node");
                     let node_key = self.nodes[node_id as usize].data.key_parts();
+                    println!(
+                        "self.page_parents[&page_id]: {}",
+                        self.page_parents[&page_id]
+                    );
                     let parent = self.node(PageNodeID::Page(self.page_parents[&page_id]));
                     parent.insert_child(node_id, node_key);
+                    println!("node_id {}, node_key {:?}", node_id, node_key);
                 }
                 node_id
             }

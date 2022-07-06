@@ -19,6 +19,8 @@ const FILL_PERCENT: f32 = 0.5;
 
 static mut MERGE_COUNT: u64 = 0;
 static mut CHILD_MERGE_COUNT: u64 = 0;
+static mut MERGE_COUNT_BRANCHES: u64 = 0;
+
 pub(crate) struct Node {
     pub(crate) id: NodeID,
     pub(crate) page_id: PageID,
@@ -31,6 +33,7 @@ pub(crate) struct Node {
     original_key: Option<SliceParts>,
 }
 
+#[derive(Debug)]
 pub(crate) enum NodeData {
     Branches(Vec<Branch>),
     Leaves(Vec<Data>),
@@ -86,6 +89,7 @@ impl NodeData {
     }
 }
 
+#[derive(Debug)]
 pub(crate) struct Branch {
     key: SliceParts,
     pub(crate) page: PageID,
@@ -244,12 +248,18 @@ impl Node {
     }
 
     pub(crate) fn merge(&mut self) -> bool {
-        unsafe { MERGE_COUNT+=1; };
-        unsafe { println!("Merge count {}", MERGE_COUNT); };
         // merge children if it is a branch node
         if let NodeData::Branches(branches) = &mut self.data {
+            println!("Branches: {:?}", branches);
+            unsafe {
+                MERGE_COUNT_BRANCHES += 1;
+            };
+            unsafe {
+                println!("Node data branches count {}", MERGE_COUNT_BRANCHES);
+            };
             let mut deleted_children = vec![];
             let mut i = 0;
+            println!("Children: {:?}", self.children);
             while i < self.children.len() {
                 // stop if there is only one branch left
                 if branches.len() == 1 {
@@ -260,8 +270,12 @@ impl Node {
                 let child = self.bucket.node(id);
                 // check if child needs to be merged.
                 if child.merge() {
-                    unsafe { CHILD_MERGE_COUNT+=1; };
-                    unsafe { println!("Child merge count {}", CHILD_MERGE_COUNT); };
+                    unsafe {
+                        CHILD_MERGE_COUNT += 1;
+                    };
+                    unsafe {
+                        println!("Child merge count {}", CHILD_MERGE_COUNT);
+                    };
                     // find the child's branch element in this node's data
                     let index = match branches
                         .binary_search_by_key(&child.original_key.unwrap().slice(), |b| b.key())
@@ -269,6 +283,7 @@ impl Node {
                         Ok(i) => i,
                         _ => panic!("THIS IS VERY VERY BAD"),
                     };
+                    println!("child.data: {:?}", child.data);
                     // check if there is any data left to copy
                     if child.data.len() > 0 {
                         // add that child's data to a sibling node
@@ -277,10 +292,15 @@ impl Node {
                             branches[index + 1].page
                         } else {
                             // left sibling
+                            println!("Left sibling");
+                            println!("branches[index - 1].page: {}", branches[index - 1].page);
                             branches[index - 1].page
                         };
+                        b.page_siblings.insert(sibling_page, self.children[i]);
+                        println!("siblings: {:?}", b.page_siblings);
                         let sibling = b.node(PageNodeID::Page(sibling_page));
                         sibling.data.merge(&mut child.data);
+                        b.page_siblings.remove(&sibling_page);
                     }
 
                     // free the child's page and mark it as deleted
@@ -299,7 +319,17 @@ impl Node {
         }
         // determine if this node needs to be merged, and return the value
         // needs to be merged if it does not have enough keys, or if it doesn't fill 1/4 of a page
-        self.data.len() < MIN_KEYS_PER_NODE || self.size() < (self.bucket.tx.db.pagesize / 4)
+        if self.data.len() < MIN_KEYS_PER_NODE || self.size() < (self.bucket.tx.db.pagesize / 4) {
+            unsafe {
+                MERGE_COUNT += 1;
+            };
+            unsafe {
+                println!("Merge count {}", MERGE_COUNT);
+            };
+            true
+        } else {
+            false
+        }
     }
 
     pub(crate) fn free_page(&mut self) {
