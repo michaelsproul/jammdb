@@ -17,13 +17,6 @@ const BRANCH_SIZE: u64 = size_of::<BranchElement>() as u64;
 const MIN_KEYS_PER_NODE: usize = 2;
 const FILL_PERCENT: f32 = 0.5;
 
-/// A debug variable for counting how many times nodes should merge.
-static mut MERGE_COUNT: u64 = 0;
-/// A debug variable to count how many times the NodeData passed to merge is Branhces variant.
-static mut MERGE_COUNT_BRANCHES: u64 = 0;
-/// A debug variable for counting how many times children are merged from a branch node.
-static mut CHILD_MERGE_COUNT: u64 = 0;
-
 pub(crate) struct Node {
     pub(crate) id: NodeID,
     pub(crate) page_id: PageID,
@@ -253,19 +246,8 @@ impl Node {
     pub(crate) fn merge(&mut self) -> bool {
         // merge children if it is a branch node
         if let NodeData::Branches(branches) = &mut self.data {
-            println!("Node, f: merge: branches: {:?}", branches);
-            unsafe {
-                MERGE_COUNT_BRANCHES += 1;
-            };
-            unsafe {
-                println!(
-                    "Node, f: merge: node data == branches count {}",
-                    MERGE_COUNT_BRANCHES
-                );
-            };
             let mut deleted_children = vec![];
             let mut i = 0;
-            println!("Node, f: merge: children: {:?}", self.children);
             while i < self.children.len() {
                 // stop if there is only one branch left
                 if branches.len() == 1 {
@@ -276,12 +258,6 @@ impl Node {
                 let child = self.bucket.node(id);
                 // check if child needs to be merged.
                 if child.merge() {
-                    unsafe {
-                        CHILD_MERGE_COUNT += 1;
-                    };
-                    unsafe {
-                        println!("Node, f: merge: child merge count {}", CHILD_MERGE_COUNT);
-                    };
                     // find the child's branch element in this node's data
                     let index = match branches
                         .binary_search_by_key(&child.original_key.unwrap().slice(), |b| b.key())
@@ -289,7 +265,6 @@ impl Node {
                         Ok(i) => i,
                         _ => panic!("THIS IS VERY VERY BAD"),
                     };
-                    println!("Node, f: merge: child.data: {:?}", child.data);
                     // check if there is any data left to copy
                     if child.data.len() > 0 {
                         // add that child's data to a sibling node
@@ -301,7 +276,6 @@ impl Node {
                             branches[index - 1].page
                         };
                         b.page_siblings.insert(sibling_page, self.children[i]);
-                        println!("Node, f: merge: siblings: {:?}", b.page_siblings);
                         let sibling = b.node(PageNodeID::Page(sibling_page));
                         sibling.data.merge(&mut child.data);
                         b.page_siblings.remove(&sibling_page);
@@ -323,17 +297,7 @@ impl Node {
         }
         // determine if this node needs to be merged, and return the value
         // needs to be merged if it does not have enough keys, or if it doesn't fill 1/4 of a page
-        if self.data.len() < MIN_KEYS_PER_NODE || self.size() < (self.bucket.tx.db.pagesize / 4) {
-            unsafe {
-                MERGE_COUNT += 1;
-            };
-            unsafe {
-                println!("Node, f: merge: merge count {}", MERGE_COUNT);
-            };
-            true
-        } else {
-            false
-        }
+        self.data.len() < MIN_KEYS_PER_NODE || self.size() < (self.bucket.tx.db.pagesize / 4)
     }
 
     pub(crate) fn free_page(&mut self) {
