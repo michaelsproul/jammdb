@@ -76,6 +76,7 @@ impl Bucket {
             nodes: Vec::new(),
             page_node_ids: HashMap::new(),
             page_parents: HashMap::new(),
+            page_siblings: HashMap::new(),
         })
     }
 
@@ -465,10 +466,13 @@ pub(crate) struct BucketInner {
     nodes: Vec<Pin<Box<Node>>>,
     page_node_ids: HashMap<PageID, NodeID>,
     page_parents: HashMap<PageID, PageID>,
+    // A sibling paged mapped to a child page upon merge.
+    pub page_siblings: HashMap<PageID, PageID>,
 }
 
 impl BucketInner {
     fn new_child(&mut self, name: &[u8]) {
+        self.dirty = true;
         let b = Bucket::new(BucketInner {
             tx: Ptr::new(&self.tx),
             meta: BucketMeta::default(),
@@ -478,6 +482,7 @@ impl BucketInner {
             nodes: Vec::new(),
             page_node_ids: HashMap::new(),
             page_parents: HashMap::new(),
+            page_siblings: HashMap::new(),
         });
         self.buckets.insert(Vec::from(name), Pin::new(Box::new(b)));
         let b = self.buckets.get_mut(name).unwrap();
@@ -504,6 +509,7 @@ impl BucketInner {
             nodes: Vec::new(),
             page_node_ids: HashMap::new(),
             page_parents: HashMap::new(),
+            page_siblings: HashMap::new(),
         }
     }
 
@@ -721,13 +727,15 @@ impl BucketInner {
                     return &mut self.nodes[*node_id as usize];
                 }
                 debug_assert!(
-                    self.meta.root_page == page_id || self.page_parents.contains_key(&page_id)
+                    self.meta.root_page == page_id
+                        || self.page_parents.contains_key(&page_id)
+                        || self.page_siblings.contains_key(&page_id)
                 );
                 let node_id = self.nodes.len() as u64;
                 self.page_node_ids.insert(page_id, node_id);
                 let n: Node = Node::from_page(node_id, Ptr::new(self), self.tx.page(page_id));
                 self.nodes.push(Pin::new(Box::new(n)));
-                if self.meta.root_page != page_id {
+                if self.meta.root_page != page_id && !self.page_siblings.contains_key(&page_id) {
                     let node_key = self.nodes[node_id as usize].data.key_parts();
                     let parent = self.node(PageNodeID::Page(self.page_parents[&page_id]));
                     parent.insert_child(node_id, node_key);
@@ -739,11 +747,24 @@ impl BucketInner {
         self.nodes.get_mut(id as usize).unwrap()
     }
 
+    fn is_dirty(&mut self) -> bool {
+        if !self.dirty {
+            for (_key, b) in self.buckets.iter_mut() {
+                let b = b.inner.get_mut();
+                if b.is_dirty() {
+                    self.dirty = true;
+                    break;
+                }
+            }
+        }
+        return self.dirty;
+    }
+
     fn rebalance(&mut self) -> Result<BucketMeta> {
         let mut bucket_metas = HashMap::new();
         for (key, b) in self.buckets.iter_mut() {
             let b = b.inner.get_mut();
-            if b.dirty {
+            if b.is_dirty() {
                 self.dirty = true;
                 let bucket_meta = b.rebalance()?;
                 bucket_metas.insert(key.clone(), bucket_meta);
@@ -769,6 +790,7 @@ impl BucketInner {
                         _ => panic!("uh wat"),
                     };
                     self.meta.root_page = page_id;
+
                     self.root = PageNodeID::Page(page_id);
                     // if the new root hasn't been modified, no need to split it
                     if !self.page_node_ids.contains_key(&page_id) {

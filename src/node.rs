@@ -29,6 +29,7 @@ pub(crate) struct Node {
     original_key: Option<SliceParts>,
 }
 
+#[derive(Debug)]
 pub(crate) enum NodeData {
     Branches(Vec<Branch>),
     Leaves(Vec<Data>),
@@ -84,6 +85,7 @@ impl NodeData {
     }
 }
 
+#[derive(Debug)]
 pub(crate) struct Branch {
     key: SliceParts,
     pub(crate) page: PageID,
@@ -273,8 +275,10 @@ impl Node {
                             // left sibling
                             branches[index - 1].page
                         };
+                        b.page_siblings.insert(sibling_page, self.children[i]);
                         let sibling = b.node(PageNodeID::Page(sibling_page));
                         sibling.data.merge(&mut child.data);
+                        b.page_siblings.remove(&sibling_page);
                     }
 
                     // free the child's page and mark it as deleted
@@ -324,7 +328,11 @@ impl Node {
                     .binary_search_by_key(&child.original_key.unwrap().slice(), |b| b.key())
                 {
                     Ok(i) => i,
-                    _ => panic!("THIS IS VERY VERY BAD"),
+                    Err(i) => panic!(
+                        "THIS IS VERY VERY BAD: {:?} {}",
+                        &child.original_key.unwrap().slice(),
+                        i
+                    ),
                 };
                 branches[index] = Branch::from_node(&child);
                 if let Some(mut new_branches) = new_branches {
